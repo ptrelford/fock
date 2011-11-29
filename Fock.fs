@@ -88,9 +88,12 @@ module internal CodeEmit =
                 gen.Emit(OpCodes.Unbox_Any, mi.ReturnType)
                 gen.Emit(OpCodes.Ret)
             | None ->
-                let ctor = typeof<NotImplementedException>.GetConstructor([||])
-                gen.Emit(OpCodes.Newobj, ctor)
-                gen.Emit(OpCodes.Throw)
+                if abstractMethod.ReturnType = typeof<System.Void> then
+                    gen.Emit(OpCodes.Ret)
+                else
+                    let ctor = typeof<NotImplementedException>.GetConstructor([||])
+                    gen.Emit(OpCodes.Newobj, ctor)
+                    gen.Emit(OpCodes.Throw)
             if abstractType.IsInterface then 
                 typeBuilder.DefineMethodOverride(methodBuilder, abstractMethod)
 
@@ -125,3 +128,15 @@ and MethodBuilder<'TAbstract when 'TAbstract : not struct>
 module It =
     let IsAny<'a> = obj() :?> 'a
     let inline any () : 'a = IsAny()
+
+module Test =
+    type IFock =
+        abstract Insert : double * unit -> int
+        abstract DoNothing : unit -> unit
+
+    let stub = 
+        Stub<IFock>()
+            .Method(fun x -> <@ x.Insert(any(),any()) @>).Returns(2)
+    let instance = stub.Create()
+    let returnValue = instance.Insert(2.0,())
+    do instance.DoNothing()
