@@ -59,33 +59,51 @@ module internal CodeEmit =
                 "_returnValues",
                 typeof<obj[]>,
                 FieldAttributes.Private ||| FieldAttributes.InitOnly)
-    
+
+        let argsField =
+            typeBuilder.DefineField(
+                "_args",
+                typeof<obj[][]>,
+                FieldAttributes.Private ||| FieldAttributes.InitOnly)
+
         // Generate default constructor
         generateConstructor typeBuilder [||] (fun _ -> ())
     
         // Generate constructor overload
-        let setReturnValuesField (gen:ILGenerator) =
+        let setFields (gen:ILGenerator) =
             gen.Emit(OpCodes.Ldarg_0)
             gen.Emit(OpCodes.Ldarg_1)
             gen.Emit(OpCodes.Stfld, returnValuesField)
-        generateConstructor typeBuilder [|typeof<obj[]>|] setReturnValuesField
+            gen.Emit(OpCodes.Ldarg_0)
+            gen.Emit(OpCodes.Ldarg_2)
+            gen.Emit(OpCodes.Stfld, argsField)
+
+        generateConstructor typeBuilder [|typeof<obj[]>;typeof<obj[][]>|] setFields
        
-        let abstractMethods = abstractType.GetMethods()
+        let groupedMethods = calls |> Seq.groupBy fst
+        let argsLookup = ResizeArray<obj[]>()
+        let returnValues = ResizeArray<obj>()
 
         // Implement type's methods
-        for abstractMethod in abstractMethods do
+        for abstractMethod in abstractType.GetMethods() do
             let methodBuilder = defineMethod typeBuilder abstractMethod
             let gen = methodBuilder.GetILGenerator()
-            let index = calls |> List.tryFindIndex (fst >> (=) abstractMethod)
-            index |> function
-            | Some index ->
-                let mi, _ = calls.[index]
-                gen.Emit(OpCodes.Ldarg_0)
-                gen.Emit(OpCodes.Ldfld, returnValuesField)
-                gen.Emit(OpCodes.Ldc_I4, index)
-                gen.Emit(OpCodes.Ldelem_Ref)
-                gen.Emit(OpCodes.Unbox_Any, mi.ReturnType)
-                gen.Emit(OpCodes.Ret)
+            let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
+            match overloads with
+            | Some (_, overloads) ->
+                let _,(args,result) = overloads |> Seq.head
+                match result with
+                | ReturnValue(value) ->
+                    let index = returnValues.Count
+                    returnValues.Add(value)
+                    gen.Emit(OpCodes.Ldarg_0)
+                    gen.Emit(OpCodes.Ldfld, returnValuesField)
+                    gen.Emit(OpCodes.Ldc_I4, index)
+                    gen.Emit(OpCodes.Ldelem_Ref)
+                    gen.Emit(OpCodes.Unbox_Any, abstractMethod.ReturnType)
+                    gen.Emit(OpCodes.Ret)
+                | Throw(excType) -> 
+                    gen.ThrowException(excType)
             | None ->
                 if abstractMethod.ReturnType = typeof<System.Void> then
                     gen.Emit(OpCodes.Ret)
@@ -94,14 +112,8 @@ module internal CodeEmit =
             if abstractType.IsInterface then 
                 typeBuilder.DefineMethodOverride(methodBuilder, abstractMethod)
 
-        let returnValues = 
-            calls 
-            |> List.map (function 
-                | (_,(_,ReturnValue(value))) -> value
-                | (_,(_,Throw(_))) -> null)
-            |> List.toArray
         let stubType = typeBuilder.CreateType()
-        let generatedObject = Activator.CreateInstance(stubType, box returnValues)
+        let generatedObject = Activator.CreateInstance(stubType, [|box (returnValues.ToArray());box (argsLookup.ToArray())|])
         generatedObject :?> 'TAbstract
 
 open CodeEmit
