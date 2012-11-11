@@ -11,11 +11,7 @@ module internal CodeEmit =
     type Result = ReturnValue of obj | Raise of Type
     /// Generates constructor
     let generateConstructor (typeBuilder:TypeBuilder) ps (genBody:ILGenerator -> unit) =
-        let cons = 
-           typeBuilder.DefineConstructor(
-                MethodAttributes.Public,
-                CallingConventions.Standard,
-                ps)  
+        let cons = typeBuilder.DefineConstructor(MethodAttributes.Public,CallingConventions.Standard,ps)
         let gen = cons.GetILGenerator()
         // Call base constructor
         gen.Emit(OpCodes.Ldarg_0)
@@ -94,19 +90,43 @@ module internal CodeEmit =
             let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
             match overloads with
             | Some (_, overloads) ->
-                let _,(args,result) = overloads |> Seq.head
-                match result with
-                | ReturnValue(value) ->
-                    let index = returnValues.Count
-                    returnValues.Add(value)
-                    gen.Emit(OpCodes.Ldarg_0)
-                    gen.Emit(OpCodes.Ldfld, returnValuesField)
-                    gen.Emit(OpCodes.Ldc_I4, index)
-                    gen.Emit(OpCodes.Ldelem_Ref)
-                    gen.Emit(OpCodes.Unbox_Any, abstractMethod.ReturnType)
-                    gen.Emit(OpCodes.Ret)
-                | Raise(excType) -> 
-                    gen.ThrowException(excType)
+                overloads |> Seq.iter (fun (_,(args, result)) ->
+                    let unmatched = gen.DefineLabel()
+                    let argsLookupIndex = argsLookup.Count
+                    // Add arguments to lookup
+                    args |> Array.map (function Any -> null | Arg(value) -> box value) |> argsLookup.Add
+                    // Emit argument matching
+                    args |> Seq.iteri (fun argIndex arg ->
+                        match arg with
+                        | Any -> ()
+                        | Arg(value) ->
+                            gen.Emit(OpCodes.Ldarg, argIndex+1)
+                            gen.Emit(OpCodes.Box, abstractMethod.GetParameters().[argIndex].ParameterType)
+                            gen.Emit(OpCodes.Ldarg_0)
+                            gen.Emit(OpCodes.Ldfld, argsField)
+                            gen.Emit(OpCodes.Ldc_I4, argsLookupIndex)
+                            gen.Emit(OpCodes.Ldelem_Ref)
+                            gen.Emit(OpCodes.Ldc_I4, argIndex)
+                            gen.Emit(OpCodes.Ldelem_Ref)
+                            gen.EmitCall(OpCodes.Call, typeof<obj>.GetMethod("Equals",[|typeof<obj>;typeof<obj>|]), null) 
+                            gen.Emit(OpCodes.Brfalse_S, unmatched)
+                    )
+                    // Emit result
+                    match result with
+                    | ReturnValue(value) ->
+                        let returnValuesIndex = returnValues.Count
+                        returnValues.Add(value)
+                        gen.Emit(OpCodes.Ldarg_0)
+                        gen.Emit(OpCodes.Ldfld, returnValuesField)
+                        gen.Emit(OpCodes.Ldc_I4, returnValuesIndex)
+                        gen.Emit(OpCodes.Ldelem_Ref)
+                        gen.Emit(OpCodes.Unbox_Any, abstractMethod.ReturnType)
+                        gen.Emit(OpCodes.Ret)
+                    | Raise(excType) -> 
+                        gen.ThrowException(excType)
+                    gen.MarkLabel(unmatched)
+                )
+                gen.ThrowException(typeof<MatchFailureException>)
             | None ->
                 if abstractMethod.ReturnType = typeof<System.Void> then
                     gen.Emit(OpCodes.Ret)
