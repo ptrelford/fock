@@ -5,9 +5,11 @@ open System.Reflection
 open System.Reflection.Emit
 
 module internal CodeEmit =
+    /// Method argument type
     type Arg = Any | Arg of obj
+    /// Method result type
     type Result = ReturnValue of obj | Raise of Type
-
+    /// Generates constructor
     let generateConstructor (typeBuilder:TypeBuilder) ps (genBody:ILGenerator -> unit) =
         let cons = 
            typeBuilder.DefineConstructor(
@@ -21,7 +23,7 @@ module internal CodeEmit =
         // Generate body
         genBody gen
         gen.Emit(OpCodes.Ret)
-
+    /// Defines method
     let defineMethod (typeBuilder:TypeBuilder) (abstractMethod:MethodInfo) =
         let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Virtual
         let args = abstractMethod.GetParameters() |> Array.map (fun arg -> arg.ParameterType)
@@ -30,7 +32,6 @@ module internal CodeEmit =
             attr,
             abstractMethod.ReturnType, 
             args)
-
     /// Builds a stub from the specified calls
     let stub<'TAbstract when 'TAbstract : not struct> 
         (calls:(MethodInfo * (Arg [] * Result)) list) =
@@ -116,19 +117,25 @@ module internal CodeEmit =
         /// Stub type
         let stubType = typeBuilder.CreateType()
         /// Generated object instance
-        let generatedObject = Activator.CreateInstance(stubType, [|box (returnValues.ToArray());box (argsLookup.ToArray())|])
+        let generatedObject = 
+            Activator.CreateInstance(
+                stubType, 
+                [|box (returnValues.ToArray());box (argsLookup.ToArray())|])
         generatedObject :?> 'TAbstract
 
 open CodeEmit
 open Microsoft.FSharp.Quotations
 open Microsoft.FSharp.Quotations.Patterns
 
+/// Wildcard attribute
 [<AttributeUsage(AttributeTargets.Method)>]
 type WildcardAttribute() =
     inherit Attribute()
 
+/// Generic stub type over abstract type
 type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
-    let t = typeof<'TAbstract>
+    /// Abstract type
+    let abstractType = typeof<'TAbstract>
     /// Converts argument expressions to Arg array
     let toArgs args =
         let isWildcard (mi:MethodInfo) = 
@@ -141,18 +148,19 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
-        | Call(Some(x), mi, args) when x.Type = t -> mi, toArgs args
-        | PropertyGet(Some(x), pi, args) when x.Type = t -> pi.GetGetMethod(), toArgs args
+        | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
+        | PropertyGet(Some(x), pi, args) when x.Type = abstractType -> pi.GetGetMethod(), toArgs args
         | _ -> raise <| NotSupportedException()
     new () = Stub([])
     /// Specifies a method of the abstract type as a quotation
     member this.Method(f:'TAbstract -> Expr<'TReturnValue>) =
         let default' = Unchecked.defaultof<'TAbstract>
         let call = toCall (f default')
-        MethodBuilder<'TAbstract,'TReturnValue>(call,calls)
+        ResultBuilder<'TAbstract,'TReturnValue>(call,calls)
     /// Creates an instance of the abstract type
     member this.Create() = stub<'TAbstract>(calls)
-and MethodBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct> 
+/// Generic builder for specifying method results
+and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct> 
     internal (call, calls) =
     /// Specifies the return value of a method
     member this.Returns(value:'TReturnValue) =
@@ -160,18 +168,19 @@ and MethodBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct>
         Stub<'TAbstract>((mi, (args, ReturnValue(box value)))::calls)
     /// Specifies the exception a method raises
     [<RequiresExplicitTypeArguments>]
-    member this.Raises<'TException when 'TException : ( new : unit -> 'TException ) and 'TException :> exn>() =
+    member this.Raises<'TException when 'TException : (new : unit -> 'TException) and 'TException :> exn>() =
         let mi, args = call
         Stub<'TAbstract>((mi, (args, Raise(typeof<'TException>)))::calls)
 
 [<Sealed>]
 type It private () =
-    [<Wildcard>] static member IsAny<'a>() = Unchecked.defaultof<'a>
+    /// Marks argument as accepting any value
+    [<Wildcard>] static member IsAny<'TArg>() = Unchecked.defaultof<'TArg>
 
-[<AutoOpen>]
-[<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
+[<AutoOpen;CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module It =
-    let [<Wildcard>] inline any () : 'a = It.IsAny()
+    /// Marks argument as accepting any value
+    let [<Wildcard>] inline any () : 'TArg = It.IsAny()
 
 module Test =
     type IFock =
