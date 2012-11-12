@@ -11,7 +11,7 @@ module ``Method Example`` =
             .Create()
     Assert(instance.Contains(null))
 
-module ``Method Overloads Example`` =
+module ``Method Matching Example`` =
     let instance =
         Stub<System.Collections.IList>()
             .Method(fun x -> <@ x.Contains(1) @>).Returns(true)
@@ -30,9 +30,11 @@ module ``Property Example`` =
 module ``Item Example`` =
     let instance =
         Stub<System.Collections.Generic.IList<double>>()
-            .Method(fun x -> <@ x.Item(any()) @>).Returns(1.0)
+            .Method(fun x -> <@ x.Item(0) @>).Returns(0.0)
+            .Method(fun x -> <@ x.Item(any()) @>).Returns(-1.0)
             .Create()
-    Assert(instance.[0] = 1.0)
+    Assert(instance.[0] = 0.0)
+    Assert(instance.[1] = -1.)
 
 module ``Raise Example`` =
     let instance =

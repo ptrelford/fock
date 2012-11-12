@@ -83,7 +83,7 @@ module internal CodeEmit =
             let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
             match overloads with
             | Some (_, overloads) ->
-                overloads |> Seq.iter (fun (_,(args, result)) ->
+                overloads |> Seq.toList |> List.rev |> Seq.iter (fun (_,(args, result)) ->
                     /// Label to goto if argument fails
                     let unmatched = gen.DefineLabel()
                     /// Index of argument values for current method overload
