@@ -72,11 +72,42 @@ type Shape2D(x0 : float, y0 : float) =
     abstract Perimeter : float with get
     abstract Name : string with get
 
+    // This method is not declared abstract. It cannot be 
+    // overriden. 
+    member this.Move dx dy =
+       x <- x + dx
+       y <- y + dy
+
+    // An abstract method that is given a default implementation 
+    // is equivalent to a virtual method in other .NET languages. 
+    // Rotate changes the internal angle of rotation of the square. 
+    // Angle is assumed to be in degrees. 
+    abstract member Rotate: float -> unit
+    default this.Rotate(angle) = rotAngle <- rotAngle + angle
+
 [<Test>]
-let ``an implemented abstract property should return the specified value`` () =
+let ``an implemented abstract class property should return the specified value`` () =
     let stub =
         Stub<Shape2D>()
             .Method(fun x -> <@ x.Name @>).Returns("Name")
             .Create()
     Assert.AreEqual("Name", stub.Name)
 
+[<AbstractClass>]
+type AbstractBaseClass() =
+   // abstract method
+   abstract member Add: int * int -> int
+
+   // abstract immutable property
+   abstract member Pi : float 
+
+   // abstract read/write property
+   abstract member Area : float with get,set
+
+[<Test>]
+let ``an implemented abstract base class method should return the specified value`` () =
+    let stub =
+        Stub<AbstractBaseClass>()
+            .Method(fun x -> <@ x.Add(any(),any()) @>).Returns(2)
+            .Create()
+    Assert.AreEqual(stub.Add(1,1), 2)
