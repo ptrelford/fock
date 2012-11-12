@@ -158,12 +158,13 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
             match arg with
             | Value(v,t) | Coerce(Value(v,t),_) -> Arg(v)
             | Call(_,mi, _) when isWildcard mi -> Any
-            | xs -> raise <| NotSupportedException(xs.ToString()) |]
+            | _ -> raise <| NotSupportedException(arg.ToString()) |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
         | PropertyGet(Some(x), pi, args) when x.Type = abstractType -> pi.GetGetMethod(), toArgs args
-        | _ -> raise <| NotSupportedException()
+        | PropertySet(Some(x), pi, args, value) when x.Type = abstractType -> pi.GetSetMethod(), toArgs args
+        | expr -> raise <| NotSupportedException(expr.ToString())
     /// Default constructor
     new () = Stub([])
     /// Specifies a method of the abstract type as a quotation

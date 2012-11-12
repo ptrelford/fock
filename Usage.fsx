@@ -20,14 +20,14 @@ module ``Method Matching Example`` =
     Assert(instance.Contains(1) = true)
     Assert(instance.Contains(2) = false)
 
-module ``Property Example`` =
+module ``Property Get Example`` =
     let instance =
         Stub<System.Collections.IList>()
             .Method(fun x -> <@ x.Count @>).Returns(1)
             .Create()
     Assert(instance.Count = 1)
 
-module ``Item Example`` =
+module ``Item Get Example`` =
     let instance =
         Stub<System.Collections.Generic.IList<double>>()
             .Method(fun x -> <@ x.Item(0) @>).Returns(0.0)
@@ -35,6 +35,14 @@ module ``Item Example`` =
             .Create()
     Assert(instance.[0] = 0.0)
     Assert(instance.[1] = -1.)
+
+module ``Item Set Example`` =
+    let instance =
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Item(any()) <- any()  @>).Raises<System.ApplicationException>()
+            .Create()
+    try instance.Item(-1) <- 0; false with e -> true
+    |> Assert
 
 module ``Raise Example`` =
     let instance =
