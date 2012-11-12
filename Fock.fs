@@ -156,9 +156,9 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
             mi.GetCustomAttributes(typeof<WildcardAttribute>, true).Length > 0
         [|for arg in args ->
             match arg with
-            | Value(v,t) -> Arg(v)
+            | Value(v,t) | Coerce(Value(v,t),_) -> Arg(v)
             | Call(_,mi, _) when isWildcard mi -> Any
-            | _ -> raise <| NotSupportedException() |]
+            | xs -> raise <| NotSupportedException(xs.ToString()) |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
@@ -196,45 +196,3 @@ type It private () =
 module It =
     /// Marks argument as accepting any value
     let [<Wildcard>] inline any () : 'TArg = It.IsAny()
-
-module ``Method Example`` =
-    let instance =
-        Stub<System.Collections.IList>()
-            .Method(fun x -> <@ x.Contains(any()) @>).Returns(true)
-            .Create()
-    System.Diagnostics.Debug.Assert(instance.Contains(null))
-
-module ``Property Example`` =
-    let instance =
-        Stub<System.Collections.IList>()
-            .Method(fun x -> <@ x.Count @>).Returns(1)
-            .Create()
-    System.Diagnostics.Debug.Assert(instance.Count = 1)
-
-module ``Item Example`` =
-    let instance =
-        Stub<System.Collections.Generic.IList<double>>()
-            .Method(fun x -> <@ x.Item(any()) @>).Returns(1.0)
-            .Create()
-    System.Diagnostics.Debug.Assert(instance.[0] = 1.0)
-
-module ``Raise Example`` =
-    let instance =
-        Stub<System.IComparable>()
-            .Method(fun x -> <@ x.CompareTo(any()) @>).Raises<ApplicationException>()
-            .Create()
-    try instance.CompareTo(1) |> ignore with e -> ()
-
-module ``Calculator Example`` =
-    type ICalculator =
-        abstract Push : int -> unit
-        abstract Sum : unit -> unit
-        abstract Total : int
-
-    let stub = 
-        Stub<ICalculator>()
-            .Method(fun x -> <@ x.Push(any()) @>).Returns(())
-            .Method(fun x -> <@ x.Total @>).Returns(2)
-    let instance = stub.Create()
-    let returnValue = instance.Push(2)
-    System.Diagnostics.Debug.Assert(instance.Total = 2)
