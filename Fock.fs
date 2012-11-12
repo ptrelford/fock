@@ -157,6 +157,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         [|for arg in args ->
             match arg with
             | Value(v,t) | Coerce(Value(v,t),_) -> Arg(v)
+            | PropertyGet(None, pi, []) -> pi.GetValue(null, [||]) |> Arg
             | Call(_,mi, _) when isWildcard mi -> Any
             | _ -> raise <| NotSupportedException(arg.ToString()) |]
     /// Converts expression to a tuple of MethodInfo and Arg array
