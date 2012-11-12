@@ -25,8 +25,7 @@ module internal CodeEmit =
         let args = abstractMethod.GetParameters() |> Array.map (fun arg -> arg.ParameterType)
         typeBuilder.DefineMethod(abstractMethod.Name, attr, abstractMethod.ReturnType, args)
     /// Builds a stub from the specified calls
-    let stub<'TAbstract when 'TAbstract : not struct> 
-        (calls:(MethodInfo * (Arg [] * Result)) list) =
+    let stub<'TAbstract when 'TAbstract : not struct> (calls:(MethodInfo * (Arg[] * Result)) list) =
         /// Abstract type
         let abstractType = typeof<'TAbstract>
         /// Stub name for abstract type
@@ -47,18 +46,12 @@ module internal CodeEmit =
                 TypeAttributes.Public ||| TypeAttributes.Class,
                 parent,
                 interfaces)
+        /// Field settings
+        let fields = FieldAttributes.Private ||| FieldAttributes.InitOnly 
         /// Field for method return values
-        let returnValuesField =
-            typeBuilder.DefineField(
-                "_returnValues",
-                typeof<obj[]>,
-                FieldAttributes.Private ||| FieldAttributes.InitOnly)
+        let returnValuesField = typeBuilder.DefineField("_returnValues", typeof<obj[]>, fields)
         /// Field for method arguments 
-        let argsField =
-            typeBuilder.DefineField(
-                "_args",
-                typeof<obj[][]>,
-                FieldAttributes.Private ||| FieldAttributes.InitOnly)
+        let argsField = typeBuilder.DefineField("_args", typeof<obj[][]>, fields)
         // Generate default constructor
         generateConstructor typeBuilder [||] (fun _ -> ())
         // Set fields from constructor arguments
@@ -94,12 +87,13 @@ module internal CodeEmit =
                     let unmatched = gen.DefineLabel()
                     let argsLookupIndex = argsLookup.Count
                     // Add arguments to lookup
-                    args |> Array.map (function Any -> null | Arg(value) -> box value) |> argsLookup.Add
+                    args |> Array.map (function Any -> null | Arg(value) -> value) |> argsLookup.Add
                     // Emit argument matching
                     args |> Seq.iteri (fun argIndex arg ->
                         match arg with
                         | Any -> ()
                         | Arg(value) ->
+                            // Emit Object.Equals(box args.[argIndex+1], _args.[argsLookupIndex].[argIndex])
                             gen.Emit(OpCodes.Ldarg, argIndex+1)
                             gen.Emit(OpCodes.Box, abstractMethod.GetParameters().[argIndex].ParameterType)
                             gen.Emit(OpCodes.Ldarg_0)
@@ -115,6 +109,7 @@ module internal CodeEmit =
                     match result with
                     | Unit -> gen.Emit(OpCodes.Ret)
                     | ReturnValue(value) ->
+                        // Emit _returnValues.[returnValuesIndex]
                         let returnValuesIndex = returnValues.Count
                         returnValues.Add(value)
                         gen.Emit(OpCodes.Ldarg_0)
@@ -139,8 +134,7 @@ module internal CodeEmit =
         /// Generated object instance
         let generatedObject = 
             Activator.CreateInstance(
-                stubType, 
-                [|box (returnValues.ToArray());box (argsLookup.ToArray())|])
+                stubType, [|box (returnValues.ToArray());box (argsLookup.ToArray())|])
         generatedObject :?> 'TAbstract
 
 open CodeEmit
@@ -149,8 +143,7 @@ open Microsoft.FSharp.Quotations.Patterns
 
 /// Wildcard attribute
 [<AttributeUsage(AttributeTargets.Method)>]
-type WildcardAttribute() =
-    inherit Attribute()
+type WildcardAttribute() = inherit Attribute()
 
 /// Generic stub type over abstract type
 type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
@@ -164,8 +157,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
             match arg with
             | Value(v,t) -> Arg(v)
             | Call(_,mi, _) when isWildcard mi -> Any
-            | _ -> raise <| NotSupportedException()
-        |]
+            | _ -> raise <| NotSupportedException() |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
@@ -182,15 +174,15 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
 /// Generic builder for specifying method results
 and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct> 
     internal (call, calls) =
+    let mi, args = call
     /// Specifies the return value of a method
     member this.Returns(value:'TReturnValue) =
-        let mi, args = call
         let result = if typeof<'TReturnValue> = typeof<unit> then Unit else ReturnValue(value)
         Stub<'TAbstract>((mi, (args, result))::calls)
     /// Specifies the exception a method raises
     [<RequiresExplicitTypeArguments>]
-    member this.Raises<'TException when 'TException : (new : unit -> 'TException) and 'TException :> exn>() =
-        let mi, args = call
+    member this.Raises<'TException when 'TException : (new : unit -> 'TException) 
+                                   and  'TException :> exn>() =
         Stub<'TAbstract>((mi, (args, Raise(typeof<'TException>)))::calls)
 
 [<Sealed>]
