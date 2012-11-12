@@ -38,7 +38,7 @@ let ``an implemented interface property getter should return the specified value
             .Create()
     let returnValue = stub.StringProperty
     Assert.AreEqual(returnValue,"Fock")
-
+     
 [<Test>]
 let ``an implemented interface method with arity/1 should accept any arguments`` 
     ([<Values(-1,0,9)>] n) =
@@ -56,3 +56,27 @@ let ``an implemented interface method with arity/2 should accept any arguments``
             .Method(fun x -> <@ x.Arity2Method(any(),any()) @>).Returns(true)
             .Create()
     Assert.AreEqual(true, stub.Arity2Method(n,"string"))
+
+[<AbstractClass>]
+type Shape2D(x0 : float, y0 : float) =
+    let mutable x, y = x0, y0
+    let mutable rotAngle = 0.0
+
+    // These properties are not declared abstract. They 
+    // cannot be overriden. 
+    member this.CenterX with get() = x and set xval = x <- xval
+    member this.CenterY with get() = y and set yval = y <- yval
+
+    // These properties are abstract, and no default implementation 
+    // is provided. Non-abstract derived classes must implement these. abstract Area : floatwith get
+    abstract Perimeter : float with get
+    abstract Name : string with get
+
+[<Test>]
+let ``an implemented abstract property should return the specified value`` () =
+    let stub =
+        Stub<Shape2D>()
+            .Method(fun x -> <@ x.Name @>).Returns("Name")
+            .Create()
+    Assert.AreEqual("Name", stub.Name)
+
