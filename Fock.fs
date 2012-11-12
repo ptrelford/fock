@@ -41,11 +41,8 @@ module internal CodeEmit =
                 if abstractType.IsInterface 
                 then typeof<obj>, [|abstractType|]
                 else typeof<'TAbstract>, [||]
-            moduleBuilder.DefineType(
-                stubName,
-                TypeAttributes.Public ||| TypeAttributes.Class,
-                parent,
-                interfaces)
+            let attributes = TypeAttributes.Public ||| TypeAttributes.Class
+            moduleBuilder.DefineType(stubName, attributes, parent, interfaces)
         /// Field settings
         let fields = FieldAttributes.Private ||| FieldAttributes.InitOnly 
         /// Field for method return values
@@ -78,13 +75,18 @@ module internal CodeEmit =
             }
         // Implement abstract type's methods
         for abstractMethod in abstractMethods do
+            /// Method builder
             let methodBuilder = defineMethod typeBuilder abstractMethod
+            /// IL generator
             let gen = methodBuilder.GetILGenerator()
+            /// Method overloads defined for current method
             let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
             match overloads with
             | Some (_, overloads) ->
                 overloads |> Seq.iter (fun (_,(args, result)) ->
+                    /// Label to goto if argument fails
                     let unmatched = gen.DefineLabel()
+                    /// Index of argument values for current method overload
                     let argsLookupIndex = argsLookup.Count
                     // Add arguments to lookup
                     args |> Array.map (function Any -> null | Arg(value) -> value) |> argsLookup.Add
@@ -123,10 +125,9 @@ module internal CodeEmit =
                 )
                 gen.ThrowException(typeof<MatchFailureException>)
             | None ->
-                if abstractMethod.ReturnType = typeof<System.Void> then
-                    gen.Emit(OpCodes.Ret)
-                else    
-                    gen.ThrowException(typeof<NotImplementedException>)
+                if abstractMethod.ReturnType = typeof<System.Void> 
+                then gen.Emit(OpCodes.Ret)
+                else gen.ThrowException(typeof<NotImplementedException>)
             if abstractType.IsInterface then
                 typeBuilder.DefineMethodOverride(methodBuilder, abstractMethod)
         /// Stub type
@@ -163,6 +164,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
         | PropertyGet(Some(x), pi, args) when x.Type = abstractType -> pi.GetGetMethod(), toArgs args
         | _ -> raise <| NotSupportedException()
+    /// Default constructor
     new () = Stub([])
     /// Specifies a method of the abstract type as a quotation
     member this.Method(f:'TAbstract -> Expr<'TReturnValue>) =
