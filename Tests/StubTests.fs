@@ -57,6 +57,14 @@ let ``an implemented interface method with arity/2 should accept any arguments``
             .Create()
     Assert.AreEqual(true, stub.Arity2Method(n,"string"))
 
+[<Test>]
+let ``reference type arguments should accept and match null`` () =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity2Method(any(), null) @>).Returns(true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity2Method(1,null))
+
 [<AbstractClass>]
 type Shape2D(x0 : float, y0 : float) =
     let mutable x, y = x0, y0
@@ -108,6 +116,6 @@ type AbstractBaseClass() =
 let ``an implemented abstract base class method should return the specified value`` () =
     let stub =
         Stub<AbstractBaseClass>()
-            .Method(fun x -> <@ x.Add(any(),any()) @>).Returns(2)
+            .Method(fun x -> <@ x.Add(any(), any()) @>).Returns(2)
             .Create()
     Assert.AreEqual(stub.Add(1,1), 2)
