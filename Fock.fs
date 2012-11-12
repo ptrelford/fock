@@ -8,7 +8,7 @@ module internal CodeEmit =
     /// Method argument type
     type Arg = Any | Arg of obj
     /// Method result type
-    type Result = ReturnValue of obj | Raise of Type
+    type Result = Unit | ReturnValue of obj | Raise of Type
     /// Generates constructor
     let generateConstructor (typeBuilder:TypeBuilder) ps (genBody:ILGenerator -> unit) =
         let cons = typeBuilder.DefineConstructor(MethodAttributes.Public,CallingConventions.Standard,ps)
@@ -23,11 +23,7 @@ module internal CodeEmit =
     let defineMethod (typeBuilder:TypeBuilder) (abstractMethod:MethodInfo) =
         let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Virtual
         let args = abstractMethod.GetParameters() |> Array.map (fun arg -> arg.ParameterType)
-        typeBuilder.DefineMethod(
-            abstractMethod.Name, 
-            attr,
-            abstractMethod.ReturnType, 
-            args)
+        typeBuilder.DefineMethod(abstractMethod.Name, attr, abstractMethod.ReturnType, args)
     /// Builds a stub from the specified calls
     let stub<'TAbstract when 'TAbstract : not struct> 
         (calls:(MethodInfo * (Arg [] * Result)) list) =
@@ -37,9 +33,7 @@ module internal CodeEmit =
         let stubName = "Stub" + abstractType.Name
         /// Builder for assembly
         let assemblyBuilder =
-            AppDomain
-                .CurrentDomain
-                .DefineDynamicAssembly(AssemblyName(stubName),AssemblyBuilderAccess.Run)
+            AppDomain.CurrentDomain.DefineDynamicAssembly(AssemblyName(stubName),AssemblyBuilderAccess.Run)
         /// Builder for module
         let moduleBuilder = assemblyBuilder.DefineDynamicModule(stubName+".dll")
         /// Builder for abstract type
@@ -83,8 +77,14 @@ module internal CodeEmit =
         let argsLookup = ResizeArray<obj[]>()
         /// Method return values
         let returnValues = ResizeArray<obj>()
+        /// Abstract type's methods including interfaces
+        let abstractMethods = seq { 
+            yield! abstractType.GetMethods()
+            for interfaceType in abstractType.GetInterfaces() do
+                yield! interfaceType.GetMethods()
+            }
         // Implement abstract type's methods
-        for abstractMethod in abstractType.GetMethods() do
+        for abstractMethod in abstractMethods do
             let methodBuilder = defineMethod typeBuilder abstractMethod
             let gen = methodBuilder.GetILGenerator()
             let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
@@ -113,6 +113,7 @@ module internal CodeEmit =
                     )
                     // Emit result
                     match result with
+                    | Unit -> gen.Emit(OpCodes.Ret)
                     | ReturnValue(value) ->
                         let returnValuesIndex = returnValues.Count
                         returnValues.Add(value)
@@ -122,8 +123,7 @@ module internal CodeEmit =
                         gen.Emit(OpCodes.Ldelem_Ref)
                         gen.Emit(OpCodes.Unbox_Any, abstractMethod.ReturnType)
                         gen.Emit(OpCodes.Ret)
-                    | Raise(excType) -> 
-                        gen.ThrowException(excType)
+                    | Raise(excType) -> gen.ThrowException(excType)
                     gen.MarkLabel(unmatched)
                 )
                 gen.ThrowException(typeof<MatchFailureException>)
@@ -132,7 +132,7 @@ module internal CodeEmit =
                     gen.Emit(OpCodes.Ret)
                 else    
                     gen.ThrowException(typeof<NotImplementedException>)
-            if abstractType.IsInterface then 
+            if abstractType.IsInterface then
                 typeBuilder.DefineMethodOverride(methodBuilder, abstractMethod)
         /// Stub type
         let stubType = typeBuilder.CreateType()
@@ -185,7 +185,8 @@ and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct>
     /// Specifies the return value of a method
     member this.Returns(value:'TReturnValue) =
         let mi, args = call
-        Stub<'TAbstract>((mi, (args, ReturnValue(box value)))::calls)
+        let result = if typeof<'TReturnValue> = typeof<unit> then Unit else ReturnValue(value)
+        Stub<'TAbstract>((mi, (args, result))::calls)
     /// Specifies the exception a method raises
     [<RequiresExplicitTypeArguments>]
     member this.Raises<'TException when 'TException : (new : unit -> 'TException) and 'TException :> exn>() =
@@ -202,15 +203,44 @@ module It =
     /// Marks argument as accepting any value
     let [<Wildcard>] inline any () : 'TArg = It.IsAny()
 
-module Test =
-    type IFock =
-        abstract Insert : double * unit -> int
-        abstract DoNothing : unit -> unit
+module ``Method Example`` =
+    let instance =
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Contains(any()) @>).Returns(true)
+            .Create()
+    System.Diagnostics.Debug.Assert(instance.Contains(null))
+
+module ``Property Example`` =
+    let instance =
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Count @>).Returns(1)
+            .Create()
+    System.Diagnostics.Debug.Assert(instance.Count = 1)
+
+module ``Item Example`` =
+    let instance =
+        Stub<System.Collections.Generic.IList<double>>()
+            .Method(fun x -> <@ x.Item(any()) @>).Returns(1.0)
+            .Create()
+    System.Diagnostics.Debug.Assert(instance.[0] = 1.0)
+
+module ``Raise Example`` =
+    let instance =
+        Stub<System.IComparable>()
+            .Method(fun x -> <@ x.CompareTo(any()) @>).Raises<ApplicationException>()
+            .Create()
+    try instance.CompareTo(1) |> ignore with e -> ()
+
+module ``Calculator Example`` =
+    type ICalculator =
+        abstract Push : int -> unit
+        abstract Sum : unit -> unit
+        abstract Total : int
 
     let stub = 
-        Stub<IFock>()
-            .Method(fun x -> <@ x.Insert(any(),any()) @>).Returns(2)
-            .Method(fun x -> <@ x.DoNothing() @>).Raises<ApplicationException>()
+        Stub<ICalculator>()
+            .Method(fun x -> <@ x.Push(any()) @>).Returns(())
+            .Method(fun x -> <@ x.Total @>).Returns(2)
     let instance = stub.Create()
-    let returnValue = instance.Insert(2.0,())
-    do instance.DoNothing()
+    let returnValue = instance.Push(2)
+    System.Diagnostics.Debug.Assert(instance.Total = 2)
