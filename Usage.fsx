@@ -36,6 +36,15 @@ module ``Property Get Example`` =
             .Create()
     Assert(instance.Count = 1)
 
+module ``Counting Property Get Example`` =
+    let counter = ref 0
+    let instance =
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Count @>).Returns(fun () -> incr counter; !counter)
+            .Create()
+    Assert(instance.Count = 1)
+    Assert(instance.Count = 2)
+
 module ``Item Get Example`` =
     let instance =
         Stub<System.Collections.Generic.IList<double>>()
