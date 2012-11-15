@@ -1,4 +1,5 @@
-﻿#load "Fock.fs"
+﻿#r ".\packages\FSPowerPack.Linq.Community.2.0.0.1\Lib\Net40\FSharp.PowerPack.Linq.dll"
+#load "Fock.fs"
 
 open Fock
 
@@ -19,6 +20,14 @@ module ``Method Matching Example`` =
             .Create()
     Assert(instance.Contains(1) = true)
     Assert(instance.Contains(2) = false)
+
+module ``Method Predicate Example`` =
+    let instance =
+        Stub<System.Collections.Generic.IList<int>>()
+            .Method(fun x -> <@ x.Remove(is(fun i -> i >= 0)) @>).Returns(true)
+            .Method(fun x -> <@ x.Remove(is(fun i -> i <  0)) @>).Raises<System.ArgumentOutOfRangeException>()
+            .Create()
+    Assert(instance.Remove(99))
 
 module ``Property Get Example`` =
     let instance =
@@ -41,7 +50,7 @@ module ``Item Set Example`` =
         Stub<System.Collections.IList>()
             .Method(fun x -> <@ x.Item(any()) <- any()  @>).Raises<System.ApplicationException>()
             .Create()
-    try instance.Item(-1) <- 0; false with e -> true
+    try instance.Item(-1) <- 0; false with :? System.ApplicationException -> true
     |> Assert
 
 module ``Raise Example`` =
@@ -51,6 +60,16 @@ module ``Raise Example`` =
             .Create()
     try instance.CompareTo(1) |> ignore; false with e -> true
     |> Assert
+
+module ``Call Example`` =
+    let mutable called = false
+    let instance =
+        Stub<System.Collections.Generic.IList<string>>()
+            .Method(fun x -> <@ x.Insert(any(), any()) @>)
+                .Calls<int * string>(fun (index,item) -> called <- true)
+            .Create()
+    instance.Insert(6, "Six")
+    Assert(called)
 
 module ``Calculator Example`` =
     type ICalculator =
