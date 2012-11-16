@@ -8,6 +8,7 @@ type IInterface =
     abstract MethodReturnsNothing : unit -> unit
     abstract Arity1Method : int -> bool
     abstract Arity2Method : int * string -> bool
+    abstract Arity3Method : int * string * float -> bool
     abstract StringProperty : string
 
 [<Test>]
@@ -38,7 +39,17 @@ let ``an implemented interface property getter should return the specified value
             .Create()
     let returnValue = stub.StringProperty
     Assert.AreEqual(returnValue,"Fock")
-     
+
+[<Test>]
+let ``an implemented interface property getter should return the specified computed value`` () =
+    let counter = 1
+    let stub = 
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Count @>).Returns(fun () -> counter)
+            .Create()
+    let returnValue = stub.Count
+    Assert.AreEqual(returnValue, 1)
+
 [<Test>]
 let ``an implemented interface method with arity/1 should accept any arguments`` 
     ([<Values(-1,0,9)>] n) =
@@ -47,6 +58,15 @@ let ``an implemented interface method with arity/1 should accept any arguments``
             .Method(fun x -> <@ x.Arity1Method(any()) @>).Returns(true)
             .Create()
     Assert.AreEqual(true, stub.Arity1Method(n))
+
+[<Test>]
+let ``an implemented composite interface method with arity/1 should accept any arguments`` 
+    ([<Values("","NotEmpty")>] x) =
+    let stub =
+        Stub<System.Collections.IList>()
+            .Method(fun x -> <@ x.Contains(any()) @>).Returns(true)
+            .Create()
+    Assert.True(stub.Contains(x))
 
 [<Test>]
 let ``an implemented interface method with arity/2 should accept any arguments`` 
@@ -64,6 +84,29 @@ let ``reference type arguments should accept and match null`` () =
             .Method(fun x -> <@ x.Arity2Method(any(), null) @>).Returns(true)
             .Create()
     Assert.AreEqual(true, stub.Arity2Method(1,null))
+
+[<Test; Combinatorial>]
+let ``an implemented interface method with arity/2 should be callable`` 
+    ([<Values(9,0,-1)>] n,
+     [<Values("","NotEmpty")>] s) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity2Method(any(),any()) @>)
+                .Calls<int * string>(fun (i,s) -> true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity2Method(n,s))
+
+[<Test; Combinatorial>]
+let ``an implemented interface method with arity/3 should be callable`` 
+    ([<Values(9,0,-1)>] n,
+     [<Values("","NotEmpty")>] s,
+     [<Values(System.Double.NegativeInfinity,0,System.Double.MaxValue)>] d) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity3Method(any(),any(),any()) @>)
+                .Calls<int * string * float>(fun (i,s,d) -> true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity3Method(n,s,d))
 
 [<AbstractClass>]
 type Shape2D(x0 : float, y0 : float) =
