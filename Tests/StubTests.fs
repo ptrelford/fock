@@ -7,8 +7,11 @@ type IInterface =
     abstract MethodReturnsSomething : unit -> int
     abstract MethodReturnsNothing : unit -> unit
     abstract Arity1Method : int -> bool
+    abstract Arity1MethodReturnsNothing : int -> unit
     abstract Arity2Method : int * string -> bool
+    abstract Arity2MethodReturnsNothing : int * string -> unit
     abstract Arity3Method : int * string * float -> bool
+    abstract Arity3MethodReturnsNothing : int * string * float -> unit
     abstract StringProperty : string
 
 [<Test>]
@@ -60,6 +63,15 @@ let ``an implemented interface method with arity/1 should accept any arguments``
     Assert.AreEqual(true, stub.Arity1Method(n))
 
 [<Test>]
+let ``an implemented interface method with arity/1 which returns nothing should not throw`` 
+    ([<Values(-1,0,9)>] n) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity1MethodReturnsNothing(any()) @>).Returns(())
+            .Create()
+    stub.Arity1MethodReturnsNothing(n)
+
+[<Test>]
 let ``an implemented composite interface method with arity/1 should accept any arguments`` 
     ([<Values("","NotEmpty")>] x) =
     let stub =
@@ -76,6 +88,15 @@ let ``an implemented interface method with arity/2 should accept any arguments``
             .Method(fun x -> <@ x.Arity2Method(any(),any()) @>).Returns(true)
             .Create()
     Assert.AreEqual(true, stub.Arity2Method(n,"string"))
+
+[<Test>]
+let ``an implemented interface method with arity/2 which returns nothing should not throw`` 
+    ([<Values(9,0,-1)>] n) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity2MethodReturnsNothing(any(),any()) @>).Returns(())
+            .Create()
+    stub.Arity2MethodReturnsNothing(n,"string")
 
 [<Test>]
 let ``reference type arguments should accept and match null`` () =
