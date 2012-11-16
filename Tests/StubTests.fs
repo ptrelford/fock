@@ -217,3 +217,22 @@ let ``an implemented abstract base class method should return the specified valu
             .Method(fun x -> <@ x.Add(any(), any()) @>).Returns(2)
             .Create()
     Assert.AreEqual(stub.Add(1,1), 2)
+
+[<Test>]
+let ``an implemented abstract base class property should return the specified value`` () =
+    let stub =
+        Stub<AbstractBaseClass>()
+            .Method(fun x -> <@ x.Pi @>).Returns(4.0)
+            .Create()
+    Assert.AreEqual(stub.Pi, 4.0)
+
+[<Test>]
+let ``an implemented abstract base class property setter should accept the specified value`` () =
+    let specifiedValue = ref None
+    let stub =
+        Stub<AbstractBaseClass>()
+            .Method(fun x -> <@ x.Area <- any() @>).Calls<float>(fun x -> specifiedValue := Some x)
+            .Create()
+    let area = 16.0
+    stub.Area <- area
+    Assert.AreEqual(!specifiedValue, Some(area))
