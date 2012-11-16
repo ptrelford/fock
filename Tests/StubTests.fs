@@ -108,6 +108,40 @@ let ``an implemented interface method with arity/3 should be callable``
             .Create()
     Assert.AreEqual(true, stub.Arity3Method(n,s,d))
 
+[<Test; Combinatorial>]
+let ``an implemented interface method with arity/3 should match specified arguments`` 
+    ([<Values(9,0,-1)>] n,
+     [<Values("","NotEmpty")>] s,
+     [<Values(System.Double.NegativeInfinity,0,System.Double.MaxValue)>] d) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity3Method(n,s,d) @>).Returns(true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity3Method(n,s,d))
+
+[<Test; Combinatorial>]
+let ``an implemented interface method with arity/3 should match specified argument predicates`` 
+    ([<Values(9,0,-1)>] n,
+     [<Values("","NotEmpty")>] s,
+     [<Values(System.Double.NegativeInfinity,0,System.Double.MaxValue)>] d) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity3Method(is((=) n),is((=) s),is((=) d)) @>).Returns(true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity3Method(n,s,d))
+
+[<Test; Combinatorial>]
+let ``an implemented interface method with arity/3 should match correct method pattern`` 
+    ([<Values(9,0,-1)>] n,
+     [<Values("","NotEmpty")>] s,
+     [<Values(System.Double.NegativeInfinity,0,System.Double.MaxValue)>] d) =
+    let stub =
+        Stub<IInterface>()
+            .Method(fun x -> <@ x.Arity3Method(is((<>) n),is((<>) s),is((<>) d)) @>).Returns(false)
+            .Method(fun x -> <@ x.Arity3Method(any(),any(),any()) @>).Returns(true)
+            .Create()
+    Assert.AreEqual(true, stub.Arity3Method(n,s,d))
+
 [<AbstractClass>]
 type Shape2D(x0 : float, y0 : float) =
     let mutable x, y = x0, y0
