@@ -78,7 +78,7 @@ module ``Event Example`` =
             .Create()
     let triggered = ref false
     instance.PropertyChanged.Add(fun x -> triggered := true)
-    event.Trigger(null, System.ComponentModel.PropertyChangedEventArgs("X"))
+    event.Trigger(instance, System.ComponentModel.PropertyChangedEventArgs("X"))
     Assert(!triggered)
 
 module ``Call Example`` =

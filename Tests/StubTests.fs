@@ -237,13 +237,29 @@ let ``an implemented abstract base class property setter should accept the speci
     stub.Area <- area
     Assert.AreEqual(!specifiedValue, Some(area))
 
+open System.ComponentModel
+
 let [<Test>] ``an implemented interface event can add handlers`` () =
-    let event = Event<System.ComponentModel.PropertyChangedEventHandler,_>()
+    let event = Event<_,_>()
     let instance =
         Stub<System.ComponentModel.INotifyPropertyChanged>()
             .Event(fun x -> <@ x.PropertyChanged @>).Publishes(event.Publish) 
             .Create()
     let triggered = ref false
     instance.PropertyChanged.Add(fun x -> triggered := true)
-    event.Trigger(null, System.ComponentModel.PropertyChangedEventArgs("X"))
+    event.Trigger(instance, PropertyChangedEventArgs("X"))
     Assert.IsTrue(!triggered)
+
+let [<Test>] ``an implemented interface event can add/remove handlers`` () =
+    let event = Event<_,_>()
+    let instance =
+        Stub<System.ComponentModel.INotifyPropertyChanged>()
+            .Event(fun x -> <@ x.PropertyChanged @>).Publishes(event.Publish) 
+            .Create()
+    let triggered = ref false
+    let setTriggered s e = triggered := true
+    let handler = PropertyChangedEventHandler(setTriggered)
+    instance.PropertyChanged.AddHandler(handler)
+    instance.PropertyChanged.RemoveHandler(handler)
+    event.Trigger(instance, PropertyChangedEventArgs("X"))
+    Assert.IsFalse(!triggered)
