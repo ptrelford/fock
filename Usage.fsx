@@ -70,6 +70,17 @@ module ``Raise Example`` =
     try instance.CompareTo(1) |> ignore; false with e -> true
     |> Assert
 
+module ``Event Example`` =
+    let event = Event<_,_>()
+    let instance =
+        Stub<System.ComponentModel.INotifyPropertyChanged>()
+            .Event(fun x -> <@ x.PropertyChanged @>).Publishes(event.Publish)
+            .Create()
+    let triggered = ref false
+    instance.PropertyChanged.Add(fun x -> triggered := true)
+    event.Trigger(null, System.ComponentModel.PropertyChangedEventArgs("X"))
+    Assert(!triggered)
+
 module ``Call Example`` =
     let mutable called = false
     let instance =

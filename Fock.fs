@@ -14,10 +14,12 @@ module internal CodeEmit =
     type Value = obj
     /// Boxed function
     type Func = obj
+    /// Boxed event
+    type PublishedEvent = obj
     /// Method argument type
     type Arg = Any | Arg of Value | Pred of Func
     /// Method result type
-    type Result = Unit | ReturnValue of Value | ReturnFunc of Func | Call of Func | Raise of Type
+    type Result = Unit | ReturnValue of Value | ReturnFunc of Func | AddHandler of PublishedEvent | Call of Func | Raise of Type
     /// Generates constructor
     let generateConstructor (typeBuilder:TypeBuilder) ps (genBody:ILGenerator -> unit) =
         let cons = typeBuilder.DefineConstructor(MethodAttributes.Public,CallingConventions.Standard,ps)
@@ -151,6 +153,14 @@ module internal CodeEmit =
                         if mi.ReturnType = typeof<unit> || mi.ReturnType = typeof<Void> then 
                             gen.Emit(OpCodes.Pop)
                         gen.Emit(OpCodes.Ret)
+                    | AddHandler(e) ->
+                        emitReturnValueLookup e
+                        let handlerType = e.GetType().GetGenericArguments().[0]
+                        gen.Emit(OpCodes.Ldarg_1)
+                        let t = typedefof<IDelegateEvent<_>>.MakeGenericType(handlerType)
+                        let invoke = t.GetMethod("AddHandler")
+                        gen.Emit(OpCodes.Callvirt, invoke)
+                        gen.Emit(OpCodes.Ret)
                     | Call(f) ->
                         emitReturnValueLookup f
                         // Emit Invoke
@@ -217,6 +227,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
         | PropertyGet(Some(x), pi, args) when x.Type = abstractType -> pi.GetGetMethod(), toArgs args
         | PropertySet(Some(x), pi, args, value) when x.Type = abstractType -> pi.GetSetMethod(), toArgs args
+        | Call(None, mi, [Lambda(_,Call(_,addHandler,args));Lambda(_,Call(_,remove,_));_]) -> addHandler, [|Any|]
         | expr -> raise <| NotSupportedException(expr.ToString())
     /// Default constructor
     new () = Stub([])
@@ -225,6 +236,11 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         let default' = Unchecked.defaultof<'TAbstract>
         let call = toCall (f default')
         ResultBuilder<'TAbstract,'TReturnValue>(call,calls)
+    /// Specifies an event of the abstract type as a quotation
+    member this.Event(f:'TAbstract -> Expr<'TEvent>) =
+        let default' = Unchecked.defaultof<'TAbstract>
+        let call = toCall (f default')
+        EventBuilder<'TAbstract,'TEvent>(call,calls)
     /// Creates an instance of the abstract type
     member this.Create() = stub<'TAbstract>(calls)
 /// Generic builder for specifying method results
@@ -247,6 +263,13 @@ and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct>
     member this.Raises<'TException when 'TException : (new : unit -> 'TException) 
                                    and  'TException :> exn>() =
         Stub<'TAbstract>((mi, (args, Raise(typeof<'TException>)))::calls)
+/// Generic builder for specifying event values
+and EventBuilder<'TAbstract,'TEvent when 'TAbstract : not struct> 
+    internal (call, calls) =
+    let mi, args = call
+    /// Specifies the published event value
+    member this.Publishes(value:'TEvent) =
+        Stub<'TAbstract>((mi, (args, AddHandler(value)))::calls)
 
 [<Sealed>]
 type It private () =

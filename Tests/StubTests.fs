@@ -236,3 +236,14 @@ let ``an implemented abstract base class property setter should accept the speci
     let area = 16.0
     stub.Area <- area
     Assert.AreEqual(!specifiedValue, Some(area))
+
+let [<Test>] ``an implemented interface event can add handlers`` () =
+    let event = Event<System.ComponentModel.PropertyChangedEventHandler,_>()
+    let instance =
+        Stub<System.ComponentModel.INotifyPropertyChanged>()
+            .Event(fun x -> <@ x.PropertyChanged @>).Publishes(event.Publish) 
+            .Create()
+    let triggered = ref false
+    instance.PropertyChanged.Add(fun x -> triggered := true)
+    event.Trigger(null, System.ComponentModel.PropertyChangedEventArgs("X"))
+    Assert.IsTrue(!triggered)
