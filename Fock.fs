@@ -173,8 +173,7 @@ module internal CodeEmit =
                         emitReturnValueLookup f
                         // Emit Invoke
                         let args = mi.GetParameters() |> Array.map (fun arg -> arg.ParameterType)
-                        if args.Length = 1 then
-                            gen.Emit(OpCodes.Ldarg_1)
+                        if args.Length = 1 then gen.Emit(OpCodes.Ldarg_1)
                         else
                             for i = 1 to args.Length do gen.Emit(OpCodes.Ldarg, i)
                             gen.Emit(OpCodes.Newobj, FSharpType.MakeTupleType(args).GetConstructor(args))
@@ -234,10 +233,11 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
         | PropertyGet(Some(x), pi, args) when x.Type = abstractType -> pi.GetGetMethod(), toArgs args
         | PropertySet(Some(x), pi, args, value) when x.Type = abstractType -> pi.GetSetMethod(), toArgs args
-        | Call(None, mi, [Lambda(_,Call(_,addHandler,args));Lambda(_,Call(_,_,_));_]) -> addHandler, [|Any|]
         | expr -> raise <| NotSupportedException(expr.ToString())
     let toHandlers = function
-        | Call(None, mi, [Lambda(_,Call(_,addHandler,args));Lambda(_,Call(_,removeHandler,_));_]) -> addHandler, removeHandler
+        | Call(None, mi, [Lambda(_,Call(Some(x),addHandler,_));
+                          Lambda(_,Call(Some(_),removeHandler,_));_]) when x.Type = abstractType -> 
+            addHandler, removeHandler
         | expr -> raise <| NotSupportedException(expr.ToString())
     /// Default constructor
     new () = Stub([])
