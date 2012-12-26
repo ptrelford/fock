@@ -21,7 +21,7 @@ module internal CodeEmit =
     /// Method result type
     type Result = 
         | Unit
-        | ReturnValue of Value
+        | ReturnValue of Value * Type
         | ReturnFunc of Func
         | Handler of string * PublishedEvent
         | Call of Func
@@ -155,9 +155,9 @@ module internal CodeEmit =
                     // Emit result
                     match result with
                     | Unit -> gen.Emit(OpCodes.Ret)
-                    | ReturnValue(value) ->
+                    | ReturnValue(value, returnType) ->
                         emitReturnValueLookup value
-                        gen.Emit(OpCodes.Unbox_Any, value.GetType())
+                        gen.Emit(OpCodes.Unbox_Any, returnType)
                         gen.Emit(OpCodes.Ret)
                     | ReturnFunc(f) ->
                         emitReturnValueLookup f
@@ -259,7 +259,7 @@ and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct>
     let mi, args = call
     /// Specifies the return value of a method
     member this.Returns(value:'TReturnValue) =
-        let result = if typeof<'TReturnValue> = typeof<unit> then Unit else ReturnValue(value)
+        let result = if typeof<'TReturnValue> = typeof<unit> then Unit else ReturnValue(value,typeof<'TReturnValue>)
         Stub<'TAbstract>((mi, (args, result))::calls)
     /// Specifies a computed return value of a method
     member this.Returns(f:unit -> 'TReturnVaue) =
