@@ -48,6 +48,7 @@
   <ItemGroup>
     <Compile Include="Fock.fs" />
     <None Include="Usage.fsx" />
+    <Compile Include="Fock2.fs" />
     <None Include="packages.config" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\FSharp\1.0\Microsoft.FSharp.Targets" Condition="!Exists('$(MSBuildBinPath)\Microsoft.Build.Tasks.v4.0.dll')" />
