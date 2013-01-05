@@ -11,7 +11,16 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
     let abstractType = typeof<'TAbstract>
     /// Converts argument expressions to Arg array
     let toArgs (args:Expression seq) =
-        [| for arg in args -> Any |]
+        let hasAttribute a (mi:MethodInfo) = mi.GetCustomAttributes(a, true).Length > 0
+        let isWildcard mi = hasAttribute typeof<Fock.WildcardAttribute> mi
+        [| for arg in args do
+            match arg with
+            | :? ConstantExpression as constant ->
+                yield Arg(constant.Value)
+            | :? MethodCallExpression as call when isWildcard call.Method ->
+                yield Any
+            | _ -> raise <| NotSupportedException()
+        |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toMethodInfo (expr:Expression) =
         match expr with
@@ -86,5 +95,3 @@ and EventBuilder<'TAbstract when 'TAbstract : not struct>
 type It private () =
     /// Marks argument as matching any value
     [<Fock.Wildcard>] static member IsAny<'TArg>() = Unchecked.defaultof<'TArg>
-    /// Marks argument as matching specific values
-    [<Fock.Predicate>] static member Is<'TArg>(f:'TArg -> bool) = Unchecked.defaultof<'TArg>
