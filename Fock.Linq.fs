@@ -1,4 +1,4 @@
-﻿namespace Fock2
+﻿namespace Fock.Linq
 
 open System
 open System.Linq.Expressions
