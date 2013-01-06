@@ -220,14 +220,17 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
         let hasAttribute a (mi:MethodInfo) = mi.GetCustomAttributes(a, true).Length > 0
         [|for arg in args ->
             match arg with
-            | Value(v,t) | Coerce(Value(v,t),_) -> Arg(v)
-            | PropertyGet(None, pi, []) -> pi.GetValue(null, [||]) |> Arg
             | Call(_, mi, _) when hasAttribute typeof<WildcardAttribute> mi -> Any
 #if MIN_DEPENDENCY
+            | Value(v,t) | Coerce(Value(v,t),_) -> Arg(v)
+            | FieldGet(Some(Value(v,_)),fi) -> fi.GetValue(v) |> Arg
+            | PropertyGet(None, pi, []) -> pi.GetValue(null,[||]) |> Arg
+            | PropertyGet(Some(Value(v,_)),pi,[]) -> pi.GetValue(v,[||]) |> Arg
+            | _ -> raise <| NotSupportedException(arg.ToString()) |]
 #else
             | Call(_, mi, [pred]) when hasAttribute typeof<PredicateAttribute> mi -> Pred(pred.CompileUntyped()())
+            | expr -> expr.CompileUntyped()() |> Arg |]
 #endif
-            | _ -> raise <| NotSupportedException(arg.ToString()) |]
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
         | Call(Some(x), mi, args) when x.Type = abstractType -> mi, toArgs args
