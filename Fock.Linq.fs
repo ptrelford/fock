@@ -13,12 +13,18 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
     let toArgs (args:Expression seq) =
         let hasAttribute a (mi:MethodInfo) = mi.GetCustomAttributes(a, true).Length > 0
         let isWildcard mi = hasAttribute typeof<Fock.WildcardAttribute> mi
+        let isPredicate mi = hasAttribute typeof<Fock.PredicateAttribute> mi
         [| for arg in args do
             match arg with
             | :? ConstantExpression as constant ->
                 yield Arg(constant.Value)
             | :? MethodCallExpression as call when isWildcard call.Method ->
                 yield Any
+            | :? MethodCallExpression as call when isPredicate call.Method ->
+                let lambda = call.Arguments.[0] :?> LambdaExpression
+                let del = lambda.Compile()
+                let f = fun x -> del.DynamicInvoke([|x|]) :?> bool
+                yield PredBox(box f)
             | _ -> raise <| NotSupportedException()
         |]
     /// Converts expression to a tuple of MethodInfo and Arg array
@@ -95,3 +101,5 @@ and EventBuilder<'TAbstract when 'TAbstract : not struct>
 type It private () =
     /// Marks argument as matching any value
     [<Fock.Wildcard>] static member IsAny<'TArg>() = Unchecked.defaultof<'TArg>
+    /// Marks argument as matching specific values
+    [<Fock.Predicate>] static member Is<'TArg>(f:Func<'TArg,bool>) = Unchecked.defaultof<'TArg>

@@ -13,7 +13,7 @@ public class Tests
     {
         var stub = 
             new Stub<IList<int>>()
-                .SetupFunc(x => x.Contains(It.IsAny<int>())).Returns(true)
+                .SetupFunc(x => x.Contains(It.Is<int>(i => i == 1))).Returns(true)
                 .Create();
         Assert.IsTrue(stub.Contains(1));
     }
