@@ -228,8 +228,8 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
             | PropertyGet(Some(Value(v,_)),pi,[]) -> pi.GetValue(v,[||]) |> Arg
             | _ -> raise <| NotSupportedException(arg.ToString()) |]
 #else
-            | Call(_, mi, [pred]) when hasAttribute typeof<PredicateAttribute> mi -> Pred(pred.CompileUntyped()())
-            | expr -> expr.CompileUntyped()() |> Arg |]
+            | Call(_, mi, [pred]) when hasAttribute typeof<PredicateAttribute> mi -> Pred(pred.EvalUntyped())
+            | expr -> expr.EvalUntyped() |> Arg |]
 #endif
     /// Converts expression to a tuple of MethodInfo and Arg array
     let toCall = function
