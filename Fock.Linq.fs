@@ -24,7 +24,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
                 let lambda = call.Arguments.[0] :?> LambdaExpression
                 let del = lambda.Compile()
                 let f = fun x -> del.DynamicInvoke([|x|]) :?> bool
-                yield PredUntyped(box f)
+                yield PredUntyped(f)
             | _ -> raise <| NotSupportedException()
         |]
     /// Converts expression to a tuple of MethodInfo and Arg array
@@ -68,7 +68,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
     /// Constructs mock builder
     new () = Stub([])
     /// Creates a generic instance of the abstract type
-    member this.Create() = stub<'TAbstract>(calls)
+    member this.Create() = stub<'TAbstract>(true, calls)
 and ActionBuilder<'TAbstract when 'TAbstract : not struct>
     internal (call, calls) =
     let mi, args = call

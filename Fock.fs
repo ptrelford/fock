@@ -148,7 +148,7 @@ module internal CodeEmit =
         generateReturn gen (returnValues,returnValuesField) (mi,result)
         gen.MarkLabel(unmatched)
     /// Builds a stub from the specified calls
-    let stub<'TAbstract when 'TAbstract : not struct> (calls:(MethodInfo * (Arg[] * Result)) list) =
+    let stub<'TAbstract when 'TAbstract : not struct> (isStrict, calls:(MethodInfo * (Arg[] * Result)) list) =
         /// Abstract type
         let abstractType = typeof<'TAbstract>
         /// Stub name for abstract type
@@ -212,7 +212,16 @@ module internal CodeEmit =
             | None ->
                 if abstractMethod.ReturnType = typeof<System.Void> || abstractMethod.ReturnType = typeof<unit>
                 then gen.Emit(OpCodes.Ret)
-                else gen.ThrowException(typeof<NotImplementedException>)
+                else
+                    if isStrict 
+                    then gen.ThrowException(typeof<NotImplementedException>)
+                    else
+                        // Generate default value
+                        let x = gen.DeclareLocal(abstractMethod.ReturnType)
+                        gen.Emit(OpCodes.Ldloca_S, x.LocalIndex)
+                        gen.Emit(OpCodes.Initobj, abstractMethod.ReturnType)
+                        gen.Emit(OpCodes.Ldloc_0)
+                        gen.Emit(OpCodes.Ret)
             if abstractType.IsInterface then
                 typeBuilder.DefineMethodOverride(methodBuilder, abstractMethod)
         /// Stub type
@@ -235,8 +244,11 @@ type WildcardAttribute() = inherit Attribute()
 [<AttributeUsage(AttributeTargets.Method)>]
 type PredicateAttribute() = inherit Attribute()
 
+/// Mock mode
+type MockMode = Strict = 0 | Loose = 1
+
 /// Generic stub type over abstract type
-type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
+type Stub<'TAbstract when 'TAbstract : not struct> internal (mode, calls) =
     /// Abstract type
     let abstractType = typeof<'TAbstract>
     /// Converts argument expressions to Arg array
@@ -267,46 +279,48 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
             addHandler, removeHandler
         | expr -> raise <| NotSupportedException(expr.ToString())
     /// Default constructor
-    new () = Stub([])
+    new () = Stub(MockMode.Strict,[])
+    new (mode) = Stub(mode,[])
     /// Specifies a method of the abstract type as a quotation
     member this.Method(f:'TAbstract -> Expr<'TReturnValue>) =
         let default' = Unchecked.defaultof<'TAbstract>
         let call = toCall (f default')
-        ResultBuilder<'TAbstract,'TReturnValue>(call,calls)
+        ResultBuilder<'TAbstract,'TReturnValue>(mode,call,calls)
     /// Specifies an event of the abstract type as a quotation
     member this.Event(f:'TAbstract -> Expr<'TEvent>) =
         let default' = Unchecked.defaultof<'TAbstract>
         let handlers = toHandlers (f default')
-        EventBuilder<'TAbstract,'TEvent>(handlers,calls)
+        EventBuilder<'TAbstract,'TEvent>(mode,handlers,calls)
     /// Creates an instance of the abstract type
-    member this.Create() = stub<'TAbstract>(calls)
+    member this.Create() = stub<'TAbstract>(mode = MockMode.Strict, calls)
 /// Generic builder for specifying method results
 and ResultBuilder<'TAbstract,'TReturnValue when 'TAbstract : not struct> 
-    internal (call, calls) =
+    internal (mode, call, calls) =
     let mi, args = call
     /// Specifies the return value of a method
     member this.Returns(value:'TReturnValue) =
         let result = if typeof<'TReturnValue> = typeof<unit> then Unit else ReturnValue(value,typeof<'TReturnValue>)
-        Stub<'TAbstract>((mi, (args, result))::calls)
+        Stub<'TAbstract>(mode, (mi, (args, result))::calls)
     /// Specifies a computed return value of a method
     member this.Returns(f:unit -> 'TReturnVaue) =
-        Stub<'TAbstract>((mi, (args, ReturnFunc(f)))::calls)
+        Stub<'TAbstract>(mode, (mi, (args, ReturnFunc(f)))::calls)
     /// Calls the specified function to obtain the return value
     [<RequiresExplicitTypeArguments>]
     member this.Calls<'TArgs>(f:'TArgs -> 'TReturnValue) =
-        Stub<'TAbstract>((mi, (args, Call(f)))::calls)
+        Stub<'TAbstract>(mode, (mi, (args, Call(f)))::calls)
     /// Specifies the exception a method raises
     [<RequiresExplicitTypeArguments>]
     member this.Raises<'TException when 'TException : (new : unit -> 'TException) 
                                    and  'TException :> exn>() =
-        Stub<'TAbstract>((mi, (args, Raise(typeof<'TException>)))::calls)
+        Stub<'TAbstract>(mode,(mi, (args, Raise(typeof<'TException>)))::calls)
 /// Generic builder for specifying event values
 and EventBuilder<'TAbstract,'TEvent when 'TAbstract : not struct> 
-    internal (handlers, calls) =
+    internal (mode, handlers, calls) =
     let add, remove = handlers
     /// Specifies the published event value
     member this.Publishes(value:'TEvent) =
-        Stub<'TAbstract>((add, ([|Any|], Handler("AddHandler",value)))::
+        Stub<'TAbstract>(mode,
+                         (add, ([|Any|], Handler("AddHandler",value)))::
                          (remove, ([|Any|], Handler("RemoveHandler",value)))::
                          calls)
 
