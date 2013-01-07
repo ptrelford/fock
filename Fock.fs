@@ -41,53 +41,10 @@ module internal CodeEmit =
         let attr = MethodAttributes.Public ||| MethodAttributes.HideBySig ||| MethodAttributes.Virtual
         let args = abstractMethod.GetParameters() |> Array.map (fun arg -> arg.ParameterType)
         typeBuilder.DefineMethod(abstractMethod.Name, attr, abstractMethod.ReturnType, args)
-    /// Generates method
-    let generateMethod 
-        (gen:ILGenerator,argsLookup:ResizeArray<Value[]>,returnValues:ResizeArray<Value>,argsField:FieldBuilder,returnValuesField:FieldBuilder) 
+    /// Generates method return
+    let generateReturn 
+        (gen:ILGenerator) (returnValues:ResizeArray<Value>,returnValuesField:FieldBuilder)
         (mi:MethodInfo,(args, result)) =
-        let abstractMethod = mi
-        /// Label to goto if argument fails
-        let unmatched = gen.DefineLabel()
-        /// Index of argument values for current method overload
-        let argsLookupIndex = argsLookup.Count
-        // Add arguments to lookup
-        args |> Array.map (function Any -> null | Arg(value) -> value | Pred(f) -> f | PredUntyped(f) -> f) |> argsLookup.Add
-        // Emit argument matching
-        args |> Seq.iteri (fun argIndex arg ->
-            let emitArgBox () =
-                gen.Emit(OpCodes.Ldarg, argIndex+1)
-                gen.Emit(OpCodes.Box, mi.GetParameters().[argIndex].ParameterType)
-            let emitArgLookup value =
-                gen.Emit(OpCodes.Ldarg_0)
-                gen.Emit(OpCodes.Ldfld, argsField)
-                gen.Emit(OpCodes.Ldc_I4, argsLookupIndex)
-                gen.Emit(OpCodes.Ldelem_Ref)
-                gen.Emit(OpCodes.Ldc_I4, argIndex)
-                gen.Emit(OpCodes.Ldelem_Ref)
-            match arg with
-            | Any -> ()
-            | Arg(value) ->
-                emitArgBox ()
-                emitArgLookup value
-                // Emit Object.Equals(box args.[argIndex+1], _args.[argsLookupIndex].[argIndex])
-                gen.EmitCall(OpCodes.Call, typeof<obj>.GetMethod("Equals",[|typeof<obj>;typeof<obj>|]), null) 
-                gen.Emit(OpCodes.Brfalse_S, unmatched)
-            | Pred(f) ->
-                emitArgLookup f
-                gen.Emit(OpCodes.Ldarg, argIndex+1)
-                let argType = mi.GetParameters().[argIndex].ParameterType
-                let invoke = FSharpType.MakeFunctionType(argType,typeof<bool>).GetMethod("Invoke")
-                gen.Emit(OpCodes.Callvirt, invoke)
-                gen.Emit(OpCodes.Brfalse_S, unmatched)
-            | PredUntyped(f) ->
-                emitArgLookup f
-                gen.Emit(OpCodes.Ldarg, argIndex+1)
-                let argType = mi.GetParameters().[argIndex].ParameterType
-                gen.Emit(OpCodes.Box, argType)
-                let invoke = FSharpType.MakeFunctionType(typeof<obj>,typeof<bool>).GetMethod("Invoke")
-                gen.Emit(OpCodes.Callvirt, invoke)
-                gen.Emit(OpCodes.Brfalse_S, unmatched)
-        )
         /// Emits _returnValues.[returnValuesIndex]
         let emitReturnValueLookup value =
             let returnValuesIndex = returnValues.Count
@@ -135,6 +92,56 @@ module internal CodeEmit =
             if mi.ReturnType = typeof<unit> || mi.ReturnType = typeof<Void> then gen.Emit(OpCodes.Pop)
             gen.Emit(OpCodes.Ret)
         | Raise(excType) -> gen.ThrowException(excType)
+    /// Generates method
+    let generateMethod 
+        (gen:ILGenerator)
+        (argsLookup:ResizeArray<Value[]>,argsField:FieldBuilder)
+        (returnValues:ResizeArray<Value>,returnValuesField:FieldBuilder) 
+        (mi:MethodInfo,(args, result)) =
+        let abstractMethod = mi
+        /// Label to goto if argument fails
+        let unmatched = gen.DefineLabel()
+        /// Index of argument values for current method overload
+        let argsLookupIndex = argsLookup.Count
+        // Add arguments to lookup
+        args |> Array.map (function Any -> null | Arg(value) -> value | Pred(f) -> f | PredUntyped(f) -> f) |> argsLookup.Add
+        // Emit argument matching
+        args |> Seq.iteri (fun argIndex arg ->
+            let emitArgBox () =
+                gen.Emit(OpCodes.Ldarg, argIndex+1)
+                gen.Emit(OpCodes.Box, mi.GetParameters().[argIndex].ParameterType)
+            let emitArgLookup value =
+                gen.Emit(OpCodes.Ldarg_0)
+                gen.Emit(OpCodes.Ldfld, argsField)
+                gen.Emit(OpCodes.Ldc_I4, argsLookupIndex)
+                gen.Emit(OpCodes.Ldelem_Ref)
+                gen.Emit(OpCodes.Ldc_I4, argIndex)
+                gen.Emit(OpCodes.Ldelem_Ref)
+            match arg with
+            | Any -> ()
+            | Arg(value) ->
+                emitArgBox ()
+                emitArgLookup value
+                // Emit Object.Equals(box args.[argIndex+1], _args.[argsLookupIndex].[argIndex])
+                gen.EmitCall(OpCodes.Call, typeof<obj>.GetMethod("Equals",[|typeof<obj>;typeof<obj>|]), null) 
+                gen.Emit(OpCodes.Brfalse_S, unmatched)
+            | Pred(f) ->
+                emitArgLookup f
+                gen.Emit(OpCodes.Ldarg, argIndex+1)
+                let argType = mi.GetParameters().[argIndex].ParameterType
+                let invoke = FSharpType.MakeFunctionType(argType,typeof<bool>).GetMethod("Invoke")
+                gen.Emit(OpCodes.Callvirt, invoke)
+                gen.Emit(OpCodes.Brfalse_S, unmatched)
+            | PredUntyped(f) ->
+                emitArgLookup f
+                gen.Emit(OpCodes.Ldarg, argIndex+1)
+                let argType = mi.GetParameters().[argIndex].ParameterType
+                gen.Emit(OpCodes.Box, argType)
+                let invoke = FSharpType.MakeFunctionType(typeof<obj>,typeof<bool>).GetMethod("Invoke")
+                gen.Emit(OpCodes.Callvirt, invoke)
+                gen.Emit(OpCodes.Brfalse_S, unmatched)
+        )
+        generateReturn (gen) (returnValues,returnValuesField) (mi,(args, result))
         gen.MarkLabel(unmatched)
     /// Builds a stub from the specified calls
     let stub<'TAbstract when 'TAbstract : not struct> (calls:(MethodInfo * (Arg[] * Result)) list) =
@@ -193,7 +200,7 @@ module internal CodeEmit =
             let gen = methodBuilder.GetILGenerator()
             /// Method overloads defined for current method
             let overloads = groupedMethods |> Seq.tryFind (fst >> (=) abstractMethod)
-            let toMethod = generateMethod (gen,argsLookup,returnValues,argsField,returnValuesField)
+            let toMethod = generateMethod (gen) (argsLookup,argsField) (returnValues,returnValuesField)
             match overloads with
             | Some (_, overloads) ->
                 overloads |> Seq.toList |> List.rev |> Seq.iter toMethod
