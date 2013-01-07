@@ -17,7 +17,7 @@ module internal CodeEmit =
     /// Boxed event
     type PublishedEvent = obj
     /// Method argument type
-    type Arg = Any | Arg of Value | Pred of Func | PredBox of Func
+    type Arg = Any | Arg of Value | Pred of Func | PredUntyped of Func
     /// Method result type
     type Result = 
         | Unit
@@ -106,7 +106,7 @@ module internal CodeEmit =
                     /// Index of argument values for current method overload
                     let argsLookupIndex = argsLookup.Count
                     // Add arguments to lookup
-                    args |> Array.map (function Any -> null | Arg(value) -> value | Pred(f) -> f | PredBox(f) -> f) |> argsLookup.Add
+                    args |> Array.map (function Any -> null | Arg(value) -> value | Pred(f) -> f | PredUntyped(f) -> f) |> argsLookup.Add
                     // Emit argument matching
                     args |> Seq.iteri (fun argIndex arg ->
                         let emitArgBox () =
@@ -134,7 +134,7 @@ module internal CodeEmit =
                             let invoke = FSharpType.MakeFunctionType(argType,typeof<bool>).GetMethod("Invoke")
                             gen.Emit(OpCodes.Callvirt, invoke)
                             gen.Emit(OpCodes.Brfalse_S, unmatched)
-                        | PredBox(f) ->
+                        | PredUntyped(f) ->
                             emitArgLookup f
                             gen.Emit(OpCodes.Ldarg, argIndex+1)
                             let argType = abstractMethod.GetParameters().[argIndex].ParameterType

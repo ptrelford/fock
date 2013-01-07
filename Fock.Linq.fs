@@ -24,7 +24,7 @@ type Stub<'TAbstract when 'TAbstract : not struct> internal (calls) =
                 let lambda = call.Arguments.[0] :?> LambdaExpression
                 let del = lambda.Compile()
                 let f = fun x -> del.DynamicInvoke([|x|]) :?> bool
-                yield PredBox(box f)
+                yield PredUntyped(box f)
             | _ -> raise <| NotSupportedException()
         |]
     /// Converts expression to a tuple of MethodInfo and Arg array
